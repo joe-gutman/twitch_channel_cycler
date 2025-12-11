@@ -240,8 +240,6 @@
         let streamStatus = {};
         let liveOnlyMode = false;
         let activeStreamers = [...streamers];
-        let twitchClientId = 'oi2ch08l0xap9xki51dlioh7ccteu0';
-        let twitchOAuthToken = '';
         let isMuted = false;
         
         function toggleMute() {
@@ -259,53 +257,29 @@
         }
         
         async function fetchStreamStatus() {
-            if (!twitchClientId) {
-                return;
-            }
-            
             try {
-                // Build query parameters (max 100 users per request)
-                const queryParams = streamers.map(s => `user_login=${s}`).join('&');
-                const url = `https://api.twitch.tv/helix/streams?${queryParams}`;
+                // Call our Netlify serverless function instead of Twitch API directly
+                // This keeps our OAuth token secure in environment variables
+                const streamersParam = streamers.join(',');
+                const url = `/.netlify/functions/streams?streamers=${encodeURIComponent(streamersParam)}`;
                 
-                const headers = {
-                    'Client-ID': twitchClientId,
-                };
-                
-                if (twitchOAuthToken) {
-                    headers['Authorization'] = `Bearer ${twitchOAuthToken}`;
-                }
-                
-                const response = await fetch(url, { headers });
+                console.log('Fetching stream status from Netlify function...');
+                const response = await fetch(url);
                 
                 if (!response.ok) {
-                    console.error('Twitch API error:', response.status, response.statusText);
+                    const errorData = await response.json();
+                    console.error('Stream API error:', errorData);
+                    
+                    if (errorData.error && errorData.error.includes('not configured')) {
+                        console.error('⚠️ Twitch credentials not set in Netlify environment variables');
+                        console.error('Go to: Site settings > Environment variables');
+                        console.error('Add: TWITCH_CLIENT_ID and TWITCH_OAUTH_TOKEN');
+                    }
                     return;
                 }
                 
-                const data = await response.json();
-                
-                // Create a dict of username -> stream info
-                const liveStreams = {};
-                for (const stream of data.data) {
-                    liveStreams[stream.user_login.toLowerCase()] = {
-                        live: true,
-                        title: stream.title || '',
-                        game: stream.game_name || '',
-                        viewers: stream.viewer_count || 0
-                    };
-                }
-                
-                // Add offline status for channels not in results
-                streamStatus = {};
-                for (const username of streamers) {
-                    const usernameLower = username.toLowerCase();
-                    if (liveStreams[usernameLower]) {
-                        streamStatus[username] = liveStreams[usernameLower];
-                    } else {
-                        streamStatus[username] = { live: false };
-                    }
-                }
+                streamStatus = await response.json();
+                console.log('Stream status updated:', Object.values(streamStatus).filter(s => s.live).length, 'channels live');
                 
                 updateLiveCount();
                 updateStreamInfo();
