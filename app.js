@@ -109,16 +109,30 @@ function updateCategory() {
     const input = document.getElementById('categoryInput');
     const newCategory = input.value.trim();
 
-    if (!newCategory) {
-        alert('Please enter a category name');
-        input.value = categoryFilter; // Reset to previous value
-        return;
-    }
-
+    // Allow empty category to show all streams
     categoryFilter = newCategory;
     localStorage.setItem('categoryFilter', categoryFilter);
 
+    // Show feedback message
+    if (categoryFilter) {
+        console.log('Category filter set to:', categoryFilter);
+    } else {
+        console.log('Category filter cleared - showing all games');
+    }
+
     // Refresh stream status with new category
+    fetchStreamStatus();
+}
+
+function clearCategory() {
+    const input = document.getElementById('categoryInput');
+    input.value = '';
+    categoryFilter = '';
+    localStorage.setItem('categoryFilter', '');
+
+    console.log('Category filter cleared - showing all games');
+
+    // Refresh stream status without category filter
     fetchStreamStatus();
 }
 

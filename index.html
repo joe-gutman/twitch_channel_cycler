@@ -42,10 +42,11 @@
                             <label style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
                                 <span>Category Filter:</span>
                                 <div style="display: flex; gap: 8px; width: 100%;">
-                                    <input type="text" id="categoryInput" value="Minecraft" style="flex: 1; padding: 8px; background-color: #18181b; color: white; border: 1px solid #464649; border-radius: 4px; width: auto; max-width: 100%; box-sizing: border-box;">
+                                    <input type="text" id="categoryInput" value="Minecraft" placeholder="e.g., Minecraft, Just Chatting..." style="flex: 1; padding: 8px; background-color: #18181b; color: white; border: 1px solid #464649; border-radius: 4px; width: auto; max-width: 100%; box-sizing: border-box;">
                                     <button onclick="updateCategory()" style="padding: 8px 16px; background-color: #9147ff; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">Apply</button>
+                                    <button onclick="clearCategory()" style="padding: 8px 12px; background-color: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;" title="Clear category filter">✕</button>
                                 </div>
-                                <span style="font-size: 11px; color: #adadb8;">Only show streams in this category/game</span>
+                                <span style="font-size: 11px; color: #adadb8;">Only show streams in this category/game (leave empty for all)</span>
                             </label>
 
                             <label style="display: flex; align-items: center; gap: 8px;">
