@@ -240,12 +240,13 @@ function renderStreamerList() {
 
 async function fetchStreamStatus() {
     try {
-        // Call our Netlify serverless function instead of Twitch API directly
-        // This keeps our OAuth token secure in environment variables
+        // Call our Netlify serverless function without category filter
+        // We'll filter client-side so we can show both counts
         const streamersParam = streamers.join(',');
-        const url = `/.netlify/functions/streams?streamers=${encodeURIComponent(streamersParam)}&category=${encodeURIComponent(categoryFilter)}`;
+        const url = `/.netlify/functions/streams?streamers=${encodeURIComponent(streamersParam)}`;
 
         console.log('Fetching stream status from Netlify function...');
+        console.log('Category filter:', categoryFilter || '(none - all games)');
         const response = await fetch(url);
 
         if (!response.ok) {
@@ -261,7 +262,26 @@ async function fetchStreamStatus() {
         }
 
         streamStatus = await response.json();
-        console.log('Stream status updated:', Object.values(streamStatus).filter(s => s.live).length, 'channels live');
+
+        // Apply category filter client-side
+        if (categoryFilter) {
+            // Create filtered version for display
+            const filteredStatus = {};
+            for (const [streamer, status] of Object.entries(streamStatus)) {
+                if (status.live && status.game && status.game.toLowerCase() === categoryFilter.toLowerCase()) {
+                    filteredStatus[streamer] = status;
+                } else {
+                    filteredStatus[streamer] = { live: false };
+                }
+            }
+            // Store both the original and filtered
+            window.unfilteredStreamStatus = streamStatus;
+            streamStatus = filteredStatus;
+        } else {
+            window.unfilteredStreamStatus = streamStatus;
+        }
+
+        console.log('Stream status updated:', Object.values(streamStatus).filter(s => s.live).length, 'channels live in filtered category');
 
         updateLiveCount();
         updateStreamInfo();
@@ -271,14 +291,30 @@ async function fetchStreamStatus() {
 }
 
 function updateLiveCount() {
-    const liveStreams = Object.values(streamStatus).filter(s => s.live).length;
-    const liveCountEl = document.getElementById('liveCount');
+    // Count from unfiltered data (all live streams)
+    const totalLiveStreams = window.unfilteredStreamStatus ?
+        Object.values(window.unfilteredStreamStatus).filter(s => s.live).length : 0;
 
-    if (liveStreams > 0) {
-        liveCountEl.textContent = `${liveStreams} LIVE`;
+    // Count from filtered data (category-specific)
+    const categoryLiveStreams = Object.values(streamStatus).filter(s => s.live).length;
+
+    const liveCountEl = document.getElementById('liveCount');
+    const categoryCountEl = document.getElementById('categoryCount');
+
+    // Always show total live count
+    if (totalLiveStreams > 0) {
+        liveCountEl.textContent = `${totalLiveStreams} LIVE`;
         liveCountEl.style.display = 'block';
     } else {
         liveCountEl.style.display = 'none';
+    }
+
+    // Show category-specific count if a category filter is active
+    if (categoryFilter && categoryLiveStreams > 0) {
+        categoryCountEl.textContent = `${categoryLiveStreams} in "${categoryFilter}"`;
+        categoryCountEl.style.display = 'block';
+    } else {
+        categoryCountEl.style.display = 'none';
     }
 }
 
