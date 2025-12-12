@@ -11,7 +11,7 @@ async function getAppAccessToken(clientId, clientSecret) {
   if (cachedToken && tokenExpiry && Date.now() < tokenExpiry) {
     return cachedToken;
   }
-  
+
   // Get a new token
   const response = await fetch('https://id.twitch.tv/oauth2/token', {
     method: 'POST',
@@ -24,16 +24,16 @@ async function getAppAccessToken(clientId, clientSecret) {
       grant_type: 'client_credentials'
     })
   });
-  
+
   if (!response.ok) {
     throw new Error(`Failed to get access token: ${response.status}`);
   }
-  
+
   const data = await response.json();
   cachedToken = data.access_token;
   // Set expiry to 55 days (tokens last 60 days, refresh early)
   tokenExpiry = Date.now() + (55 * 24 * 60 * 60 * 1000);
-  
+
   return cachedToken;
 }
 
@@ -41,7 +41,7 @@ exports.handler = async (event, context) => {
   // Get credentials from environment variables (set in Netlify dashboard)
   const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID;
   const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
-  
+
   // CORS headers
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -49,7 +49,7 @@ exports.handler = async (event, context) => {
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Content-Type': 'application/json'
   };
-  
+
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -58,7 +58,7 @@ exports.handler = async (event, context) => {
       body: ''
     };
   }
-  
+
   // Check if credentials are configured
   if (!TWITCH_CLIENT_ID || !TWITCH_CLIENT_SECRET) {
     return {
@@ -69,11 +69,12 @@ exports.handler = async (event, context) => {
       })
     };
   }
-  
+
   try {
-    // Get streamers list from query params
+    // Get streamers list and category from query params
     const streamers = event.queryStringParameters?.streamers;
-    
+    const categoryFilter = event.queryStringParameters?.category;
+
     if (!streamers) {
       return {
         statusCode: 400,
@@ -81,32 +82,32 @@ exports.handler = async (event, context) => {
         body: JSON.stringify({ error: 'Missing streamers parameter' })
       };
     }
-    
+
     // Get app access token
     const accessToken = await getAppAccessToken(TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET);
-    
+
     // Build Twitch API request
     const usernames = streamers.split(',');
     const queryParams = usernames.map(s => `user_login=${s}`).join('&');
     const url = `https://api.twitch.tv/helix/streams?${queryParams}`;
-    
+
     const response = await fetch(url, {
       headers: {
         'Client-ID': TWITCH_CLIENT_ID,
         'Authorization': `Bearer ${accessToken}`
       }
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Twitch API error:', response.status, errorText);
-      
+
       // If token is invalid, clear cache and try again
       if (response.status === 401) {
         cachedToken = null;
         tokenExpiry = null;
       }
-      
+
       return {
         statusCode: response.status,
         headers,
@@ -117,20 +118,30 @@ exports.handler = async (event, context) => {
         })
       };
     }
-    
+
     const data = await response.json();
-    
-    // Transform data into our format
+
+    // Transform data into our format and apply category filter
     const liveStreams = {};
     for (const stream of data.data) {
-      liveStreams[stream.user_login.toLowerCase()] = {
+      const usernameLower = stream.user_login.toLowerCase();
+
+      // Apply category filter if specified
+      if (categoryFilter) {
+        // Case-insensitive comparison
+        if (stream.game_name.toLowerCase() !== categoryFilter.toLowerCase()) {
+          continue; // Skip streams not in the specified category
+        }
+      }
+
+      liveStreams[usernameLower] = {
         live: true,
         title: stream.title || '',
         game: stream.game_name || '',
         viewers: stream.viewer_count || 0
       };
     }
-    
+
     // Add offline status for channels not in results
     const result = {};
     for (const username of usernames) {
@@ -141,13 +152,13 @@ exports.handler = async (event, context) => {
         result[username] = { live: false };
       }
     }
-    
+
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify(result)
     };
-    
+
   } catch (error) {
     console.error('Function error:', error);
     return {

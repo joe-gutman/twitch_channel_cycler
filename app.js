@@ -38,6 +38,9 @@ let streamers = JSON.parse(localStorage.getItem('customStreamers')) || [
     "whisqey"
 ];
 
+// Load category filter from localStorage or use default
+let categoryFilter = localStorage.getItem('categoryFilter') || 'Minecraft';
+
 // Auto-detect domain for Twitch embed parent parameter
 const currentDomain = window.location.hostname;
 
@@ -55,13 +58,13 @@ let isInFullscreen = false;
 function toggleMute() {
     isMuted = !isMuted;
     const btn = document.getElementById('muteBtn');
-    
+
     if (isMuted) {
         btn.textContent = '🔇 Muted';
     } else {
         btn.textContent = '🔊 Unmuted';
     }
-    
+
     // Reload current channel with new mute state
     loadChannel(currentIndex);
 }
@@ -71,6 +74,8 @@ function toggleManagePanel() {
     panel.classList.toggle('hidden');
     if (!panel.classList.contains('hidden')) {
         renderStreamerList();
+        // Update category input with current value
+        document.getElementById('categoryInput').value = categoryFilter;
     }
 }
 
@@ -78,8 +83,8 @@ function toggleManagePanel() {
 document.addEventListener('click', function(event) {
     const panel = document.getElementById('managePanel');
     const container = document.getElementById('manageBtnContainer');
-    
-    if (!panel.classList.contains('hidden') && 
+
+    if (!panel.classList.contains('hidden') &&
         !container.contains(event.target)) {
         panel.classList.add('hidden');
     }
@@ -87,33 +92,50 @@ document.addEventListener('click', function(event) {
 
 function saveStreamers() {
     localStorage.setItem('customStreamers', JSON.stringify(streamers));
-    activeStreamers = liveOnlyMode ? 
-        streamers.filter(s => streamStatus[s]?.live) : 
+    activeStreamers = liveOnlyMode ?
+        streamers.filter(s => streamStatus[s]?.live) :
         [...streamers];
-    
+
     // Reset to first channel if current index is out of bounds
     if (currentIndex >= activeStreamers.length) {
         currentIndex = 0;
     }
-    
+
     // Refresh stream status with new list
+    fetchStreamStatus();
+}
+
+function updateCategory() {
+    const input = document.getElementById('categoryInput');
+    const newCategory = input.value.trim();
+
+    if (!newCategory) {
+        alert('Please enter a category name');
+        input.value = categoryFilter; // Reset to previous value
+        return;
+    }
+
+    categoryFilter = newCategory;
+    localStorage.setItem('categoryFilter', categoryFilter);
+
+    // Refresh stream status with new category
     fetchStreamStatus();
 }
 
 function addStreamer() {
     const input = document.getElementById('streamerInput');
     const name = input.value.trim();
-    
+
     if (!name) {
         alert('Please enter a streamer name');
         return;
     }
-    
+
     if (streamers.includes(name)) {
         alert('Streamer already in list');
         return;
     }
-    
+
     streamers.push(name);
     saveStreamers();
     renderStreamerList();
@@ -126,12 +148,12 @@ function bulkAddStreamers() {
         .split(',')
         .map(s => s.trim())
         .filter(s => s.length > 0);
-    
+
     if (names.length === 0) {
         alert('Please enter at least one streamer name');
         return;
     }
-    
+
     let added = 0;
     names.forEach(name => {
         if (!streamers.includes(name)) {
@@ -139,7 +161,7 @@ function bulkAddStreamers() {
             added++;
         }
     });
-    
+
     if (added > 0) {
         saveStreamers();
         renderStreamerList();
@@ -177,17 +199,17 @@ function loadStreamerByName(name) {
 function renderStreamerList() {
     const container = document.getElementById('streamerList');
     container.innerHTML = '<div style="margin-bottom: 10px; color: #adadb8; font-size: 12px;">Current Streamers (' + streamers.length + '):</div>';
-    
+
     streamers.forEach((name, index) => {
         const item = document.createElement('div');
         item.className = 'streamer-item';
-        
+
         const nameSpan = document.createElement('span');
         nameSpan.className = 'streamer-name';
         nameSpan.textContent = name;
         nameSpan.style.cursor = 'pointer';
         nameSpan.onclick = () => loadStreamerByName(name);
-        
+
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
         deleteBtn.textContent = '🗑️';
@@ -195,7 +217,7 @@ function renderStreamerList() {
             e.stopPropagation();
             removeStreamer(name);
         };
-        
+
         item.appendChild(nameSpan);
         item.appendChild(deleteBtn);
         container.appendChild(item);
@@ -207,15 +229,15 @@ async function fetchStreamStatus() {
         // Call our Netlify serverless function instead of Twitch API directly
         // This keeps our OAuth token secure in environment variables
         const streamersParam = streamers.join(',');
-        const url = `/.netlify/functions/streams?streamers=${encodeURIComponent(streamersParam)}`;
-        
+        const url = `/.netlify/functions/streams?streamers=${encodeURIComponent(streamersParam)}&category=${encodeURIComponent(categoryFilter)}`;
+
         console.log('Fetching stream status from Netlify function...');
         const response = await fetch(url);
-        
+
         if (!response.ok) {
             const errorData = await response.json();
             console.error('Stream API error:', errorData);
-            
+
             if (errorData.error && errorData.error.includes('not configured')) {
                 console.error('⚠️ Twitch credentials not set in Netlify environment variables');
                 console.error('Go to: Site settings > Environment variables');
@@ -223,10 +245,10 @@ async function fetchStreamStatus() {
             }
             return;
         }
-        
+
         streamStatus = await response.json();
         console.log('Stream status updated:', Object.values(streamStatus).filter(s => s.live).length, 'channels live');
-        
+
         updateLiveCount();
         updateStreamInfo();
     } catch (error) {
@@ -237,7 +259,7 @@ async function fetchStreamStatus() {
 function updateLiveCount() {
     const liveStreams = Object.values(streamStatus).filter(s => s.live).length;
     const liveCountEl = document.getElementById('liveCount');
-    
+
     if (liveStreams > 0) {
         liveCountEl.textContent = `${liveStreams} LIVE`;
         liveCountEl.style.display = 'block';
@@ -250,12 +272,12 @@ function updateStreamInfo() {
     const streamer = activeStreamers[currentIndex];
     const status = streamStatus[streamer];
     const streamInfoEl = document.getElementById('streamInfo');
-    
+
     if (!status) {
         streamInfoEl.textContent = '';
         return;
     }
-    
+
     if (status.live) {
         const game = status.game ? ` • ${status.game}` : '';
         const viewers = status.viewers ? ` • ${status.viewers.toLocaleString()} viewers` : '';
@@ -267,18 +289,18 @@ function updateStreamInfo() {
 
 function toggleLiveOnly() {
     liveOnlyMode = document.getElementById('liveOnlyCheckbox').checked;
-    
+
     if (liveOnlyMode) {
         // Filter to only live channels
         const liveStreamers = streamers.filter(s => streamStatus[s]?.live);
-        
+
         if (liveStreamers.length === 0) {
             alert('No channels are currently live!');
             document.getElementById('liveOnlyCheckbox').checked = false;
             liveOnlyMode = false;
             return;
         }
-        
+
         activeStreamers = liveStreamers;
         currentIndex = 0;
     } else {
@@ -286,7 +308,7 @@ function toggleLiveOnly() {
         activeStreamers = [...streamers];
         currentIndex = streamers.indexOf(activeStreamers[0]);
     }
-    
+
     loadChannel(currentIndex);
 }
 
@@ -295,12 +317,12 @@ function loadChannel(index) {
     const iframe = document.getElementById('twitchFrame');
     const iframeContainer = document.getElementById('iframe-container');
     const channelName = document.getElementById('channelName');
-    
+
     // Use auto-detected domain for Twitch embed
     const muteParam = isMuted ? '&muted=true' : '&muted=false';
     iframe.src = `https://player.twitch.tv/?channel=${streamer}&parent=${currentDomain}${muteParam}&autoplay=true`;
     channelName.textContent = `${index + 1}/${activeStreamers.length}: ${streamer}`;
-    
+
     // Re-enter fullscreen after iframe loads if we were in fullscreen
     if (isInFullscreen) {
         iframe.onload = function() {
@@ -318,7 +340,7 @@ function loadChannel(index) {
             iframe.onload = null;
         };
     }
-    
+
     updateStreamInfo();
     resetProgress();
 }
@@ -336,7 +358,7 @@ function previousChannel() {
 function togglePlayPause() {
     isPlaying = !isPlaying;
     const btn = document.getElementById('playPauseBtn');
-    
+
     if (isPlaying) {
         btn.textContent = '⏸ Pause';
         startInterval();
@@ -364,7 +386,7 @@ function updateInterval() {
     const input = document.getElementById('intervalInput');
     intervalSeconds = Math.max(5, Math.min(600, parseInt(input.value) || 30));
     input.value = intervalSeconds;
-    
+
     if (isPlaying) {
         startInterval();
     }
@@ -374,14 +396,14 @@ function startProgress() {
     stopProgress();
     const progressBar = document.getElementById('progressBar');
     let elapsed = 0;
-    
+
     progressBar.style.width = '0%';
-    
+
     progressIntervalId = setInterval(() => {
         elapsed += 0.5;
         const percentage = (elapsed / intervalSeconds) * 100;
         progressBar.style.width = percentage + '%';
-        
+
         if (elapsed >= intervalSeconds) {
             stopProgress();
         }
@@ -408,7 +430,7 @@ function resetProgress() {
 async function initialize() {
     // Fetch stream status first
     await fetchStreamStatus();
-    
+
     // Apply live-only filter if enabled
     if (liveOnlyMode) {
         const liveStreamers = streamers.filter(s => streamStatus[s]?.live);
@@ -421,7 +443,7 @@ async function initialize() {
             document.getElementById('liveOnlyCheckbox').checked = false;
         }
     }
-    
+
     loadChannel(currentIndex);
     startInterval();
 }
